@@ -1,49 +1,34 @@
 ---
 name: reminder-guardian
-description: Log every reminder, keep Cron blueprints aligned, and always source the current time through the shared helper before mentioning it.
+description: Helps you remember things by keeping a list of reminders, creating the scheduled jobs to alert you, and tracking which ones are done.
 ---
 
 # Reminder Guardian
 
-This skill keeps reminder scheduling from becoming a half-finished promise. It pairs a lightweight CLI with its bundled `scripts/time_helper.py` so you always (1) log a reminder, (2) copy a reproducible Cron blueprint, and (3) verify the reminder eventually fires.
+A very lightweight skill that turns every reminder request into a logged record plus a ready-to-run `openclaw cron add` blueprint. Installers use the CLI to record the reminder, then immediately paste the printed blueprint into `openclaw cron add`, and finally mark the reminder as scheduled so nothing slips through.
 
-## What it contains
+## Quick steps anyone can follow
 
-- **`scripts/reminder_guard.py`**: CLI to create reminder entries, mark them scheduled/sent, and print the `openclaw cron add` blueprint you need to run manually. Each entry stores `id`, `message`, `time`, `status`, and optional notes inside `memory/reminder-log.json` so you can audit skipped reminders later.
-- **Time helper integration**: The skill ships with `scripts/time_helper.py`, and every command that needs the current timestamp calls it so the reminder workflow always uses the canonical clock. The CLI never relies on an external copy of the helper.
+1. **Log the reminder**: `python3 skills/reminder-guardian/scripts/reminder_guard.py add --message "Take meds" --when 2026-02-19T17:00:00 --label "Medication"`
+   - Writes a JSON entry under `memory/reminder-log.json` (status `pending`).
+   - Prints the cron blueprint that contains the schedule + payload for the reminder.
 
-## Workflow
+2. **Create the cron job**: Copy the printed blueprint and run `openclaw cron add` (choose the delivery channel that fits your workflow).
 
-1. **Add a reminder**
-   ```bash
-   python3 skills/reminder-guardian/scripts/reminder_guard.py \
-     add --message "Daily mood check-in" --offset +30m --label "Mood" --note "Before evening call"
-   ```
-   - The CLI prints a Cron blueprint (schedule + payload) and logs the entry with status `pending`.
+3. **Tell the skill the job exists**: `python3 skills/reminder-guardian/scripts/reminder_guard.py blueprint <id> --mark` sets status to `scheduled` so the log reflects the Cron job is active.
 
-2. **Schedule it with `cron`**
-   Copy the blueprint and run a matching `openclaw cron add` command (choose `announce`, `signal`, etc., whichever channel you want). After the job is created, mark the reminder as scheduled:
-   ```bash
-   python3 skills/reminder-guardian/scripts/reminder_guard.py blueprint 3 --mark
-   ```
-   That records the change so nothing slips through the cracks.
+4. **After the reminder fires**: `python3 skills/reminder-guardian/scripts/reminder_guard.py update <id> --status sent` keeps the log accurate. Nothing happens automatically—the CLI merely tracks your intention and status changes.
 
-3. **Update when the reminder fires**
-   After you deliver the reminder (Cron job runs), mark it as sent:
-   ```bash
-   python3 skills/reminder-guardian/scripts/reminder_guard.py update 3 --status sent
-   ```
+5. **See the next reminder**: `python3 skills/reminder-guardian/scripts/reminder_guard.py next` prints the next pending entry plus its blueprint, which is handy if you want to re-schedule or re-run a reminder.
 
-4. **Check the queue**
-   ```bash
-   python3 skills/reminder-guardian/scripts/reminder_guard.py next
-   ```
-   You’ll see the next pending reminder and its blueprint to re-run if needed.
+## Time helper and consistency
 
-## Always use the time helper
+The skill ships with its own `scripts/time_helper.py`. Every command that needs “the current time” calls that helper before printing or logging anything, keeping the workflow aligned with your canonical time source.
 
-Whenever you mention *what time* a reminder should go out or log a dose, run `python3 scripts/time_helper.py` first and quote the ISO string it returns. This skill enforces that rule by calling `scripts/time_helper.py` internally, so the CLI never invents its own clock.
+## Why this matters
 
-## Publishing
+- The log is auditable (`memory/reminder-log.json`, ignored from git).
+- The blueprint gives you a human-reviewed cron payload before you schedule anything.
+- Anyone who installs this skill follows the same steps, keeping delivery explicit and safe.
 
-This folder is a standalone AgentSkill. Commit `skills/reminder-guardian/` plus the `.gitignore` change for `memory/reminder-log.json`, push to your GitHub repo, and the skill is ready for others to install. When you publish, highlight the workflow above so any future assistant knows to run the CLI before creating or mentioning reminders.
+Publishing tip: document that the blueprint must be copied into `openclaw cron add`—without that manual step, reminders never run. Once you publish, future installers will read this explanation and understand exactly how the flow works.
